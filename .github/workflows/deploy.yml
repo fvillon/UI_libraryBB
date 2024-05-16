@@ -1,26 +1,56 @@
-name: build-test-deploy
-on: push
-jobs: 
+name: Generate web page
+
+on:
+  push:
+    branches: '*'
+  workflow_dispatch:
+
+jobs:
   build:
     runs-on: ubuntu-latest
-    steps: 
-      - name: checkout repo
-        uses: actions/checkout@v3
-      - name: use node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18.x'
-      - run: npm install
-      - run: npm run build
-  test: 
+    container: davorg/perl-perlanet:latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Create pages
+      run: |
+        mkdir -p docs
+        perlanet > perlanet.log 2>&1
+    - name: Commit new page
+      if: github.repository == 'davorg/planetperl'
+      run: |
+        git config --global --add safe.directory /__w/planetperl/planetperl
+        GIT_STATUS=$(git status --porcelain)
+        echo $GIT_STATUS
+        git config user.name github-actions[bot]
+        git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+        git add docs/
+        if [ "$GIT_STATUS" != "" ]; then git commit -m "Automated Web page generation"; fi
+        if [ "$GIT_STATUS" != "" ]; then git push; fi
+    - name: Archive perlanet logs
+      uses: actions/upload-artifact@v3
+      with:
+        name: perlanet.log
+        path: ./perlanet.log
+        retention-days: 3
+
+    - name: Update pages artifact
+      uses: actions/upload-pages-artifact@v1
+      with:
+        path: docs/
+
+  deploy:
     needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${\{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    steps: 
-      - name: checkout repo
-        uses: actions/checkout@v3
-      - name: use node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18.x'
-      - run: npm install
-      - run: npm test
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v1
